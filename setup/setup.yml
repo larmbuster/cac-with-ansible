@@ -122,9 +122,9 @@
         state: present
         controller_config_file: "{{ playbook_dir }}/../controller.cfg"
 
-    - name: Import network_setup task file
-      ansible.builtin.import_tasks:
-        file: network_setup.yml
+#    - name: Import network_setup task file
+#      ansible.builtin.import_tasks:
+#        file: network_setup.yml
     
     - name: Add the CAC project
       awx.awx.project:
