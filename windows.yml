@@ -1,6 +1,6 @@
 ---
-- name:
-  hosts: "{{ HOSTS | default('windows') }}"
+- name: Configure WinRM to be STIG Compliant
+  hosts: os_windows
   gather_facts: false
   
   tasks:
