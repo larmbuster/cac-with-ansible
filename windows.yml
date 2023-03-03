@@ -4,6 +4,10 @@
   become: true
   
   tasks:
+  - name: Setting host facts using complex arguments
+    set_fact:
+      temp_password: "{{ lookup('community.general.random_string', min_lower=1, min_upper=1, min_special=1, min_numeric=1) }}"
+      
   - name: CAT 1 Ensure Windows Remote Management (WinRM) does not use Basic authentication on Windows Server 2019
     ansible.windows.win_regedit:
       path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\WinRM\Client
