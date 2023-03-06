@@ -4,7 +4,7 @@
   gather_facts: false
   
   tasks:
-    - name: CAT 1 Ensure Windows Remote Management (WinRM) does not use Basic authentication on Windows Server 2019
+    - name: CAT 1 Ensure Windows Remote Management (WinRM) does not use Basic authentication on Windows Server 2022
       ansible.windows.win_regedit:
         path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\WinRM\Client
         state: present
