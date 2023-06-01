@@ -5,7 +5,7 @@
   
   tasks:
   - name: CAT 1 Enable SELinux
-    ansible.posix.selinux:
+    ansible.posix.selinu:
       policy: targeted
       state: enforcing
   
