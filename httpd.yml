@@ -5,10 +5,24 @@
 
   tasks:
     - name: Install httpd
+      ansible.builtin.package:
+        name: httpd
+        state: present
 
     - name: Change index.html to say hello world
+      ansible.builtin.copy:
+        src: index.html
+        dest: /var/www/html/index.html
+        mode: 420
 
     - name: Ensure httpd service is started and enabled
+      ansible.builtin.service:
+        name: httpd
+        state: started
+        enabled: true
 
   handlers:
     - name: restart httpd
+      ansible.builtin.service:
+        name: httpd
+        state: restarted
