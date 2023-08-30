@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 ################################################################
-# STIG ID Scraper                                              #
+# STIG ID Parser                                               #
 ################################################################
 # Purpose:                                                     #
 # This script loops through each line in a main.yml tasks file #
