@@ -16,7 +16,7 @@ def main():
         ansible_task_file = open('./main.yml', 'r')
         #script writes results to file
         stigID_list_file = open('./stigID_list.txt', 'w+')
-        #list of STIG IDs
+        #empty list for STIG IDs
         stigID_list = []
         #string used for matching correct line
         line_matcher = "DISA-STIG-RHEL-08-"
@@ -33,6 +33,8 @@ def main():
                     stigID_list.append(stigID_line_clean)
                 else:
                     continue
+            else:
+                continue
         #write all STIG IDs in stigID_list to file
         for stigID in stigID_list:
             stigID_list_file.write(stigID)
