@@ -1,7 +1,7 @@
 ---
 - name: Uninstall Firefox on Windows
-  hosts: all
-  become: true
+  hosts: "{{ HOSTS | default('os_windows') }}"
+#  become: true
 
   tasks:
     - name: Uninstall Firefox on Windows
