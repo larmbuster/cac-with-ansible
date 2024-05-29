@@ -5,7 +5,7 @@
 
   tasks:
     - name: Install httpd
-      ansible.builtin.package:
+      ansible.builtin.dnf:
         name: httpd
         state: latest
       notify: restart httpd
