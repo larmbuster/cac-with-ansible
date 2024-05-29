@@ -7,7 +7,8 @@
     - name: Install httpd
       ansible.builtin.package:
         name: httpd
-        state: present
+        state: latest
+      notify: restart httpd
 
     - name: Change index.html to say hello world
       ansible.builtin.copy:
