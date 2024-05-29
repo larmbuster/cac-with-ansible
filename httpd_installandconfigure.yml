@@ -13,7 +13,7 @@
       ansible.builtin.copy:
         src: index.html
         dest: /var/www/html/index.html
-        mode: 420
+        mode: 664
 
     - name: Ensure httpd service is started and enabled
       ansible.builtin.service:
