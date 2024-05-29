@@ -12,7 +12,7 @@
 
     - name: Change index.html to say hello world
       ansible.builtin.copy:
-        src: index.html
+        content: 'hello world'
         dest: /var/www/html/index.html
         mode: 664
       notify: restart httpd
