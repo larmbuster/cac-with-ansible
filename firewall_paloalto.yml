@@ -1,0 +1,166 @@
+---
+- name: Process ServiceNow Firewall Exception Requests
+  hosts: localhost
+  gather_facts: false
+  vars:
+    snow_instance: "your-instance.service-now.com"
+    snow_username: "{{ lookup('env', 'SNOW_USERNAME') }}"
+    snow_password: "{{ lookup('env', 'SNOW_PASSWORD') }}"
+    palo_alto_ip: "{{ palo_alto_firewall_ip }}"
+    palo_alto_username: "{{ lookup('env', 'PALO_USERNAME') }}"
+    palo_alto_password: "{{ lookup('env', 'PALO_PASSWORD') }}"
+    ticket_number: "{{ ticket_id }}"
+    output_dir: "/tmp/firewall_requests"
+
+  tasks:
+    - name: Create output directory if it doesn't exist
+      ansible.builtin.file:
+        path: "{{ output_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Get ServiceNow ticket details
+      ansible.builtin.uri:
+        url: "https://{{ snow_instance }}/api/now/table/incident/{{ ticket_number }}"
+        method: GET
+        user: "{{ snow_username }}"
+        password: "{{ snow_password }}"
+        force_basic_auth: true
+        return_content: true
+        status_code: 200
+        body_format: json
+        headers:
+          Accept: application/json
+      register: snow_ticket
+
+    - name: Extract URL from ServiceNow ticket
+      ansible.builtin.set_fact:
+        requested_url: "{{ snow_ticket.json.result.description | regex_search('URL:\\s*([^\\s]+)', '\\1') | first }}"
+        source_ip: "{{ snow_ticket.json.result.description | regex_search('Source IP:\\s*([^\\s]+)', '\\1') | first | default('any') }}"
+      when: snow_ticket.json.result.description is defined
+
+    - name: Show extracted URL
+      ansible.builtin.debug:
+        msg: "Extracted URL: {{ requested_url }}"
+
+    - name: Get Palo Alto API key
+      ansible.builtin.uri:
+        url: "https://{{ palo_alto_ip }}/api/?type=keygen"
+        method: GET
+        user: "{{ palo_alto_username }}"
+        password: "{{ palo_alto_password }}"
+        force_basic_auth: true
+        return_content: true
+        status_code: 200
+        validate_certs: false
+      register: palo_alto_auth
+
+    - name: Extract API key from response
+      ansible.builtin.set_fact:
+        api_key: "{{ palo_alto_auth.content | regex_search('<key>([^<]+)</key>', '\\1') | first }}"
+
+    - name: Query Palo Alto logs for the URL
+      ansible.builtin.uri:
+        url: "https://{{ palo_alto_ip }}/api/?type=log&log-type=url&query=url contains '{{ requested_url }}' and (action eq 'block' or action eq 'deny')&key={{ api_key }}"
+        method: GET
+        validate_certs: false
+        return_content: true
+      register: palo_alto_logs
+
+    - name: Parse logs and extract information
+      ansible.builtin.set_fact:
+        blocking_rules: "{{ palo_alto_logs.content | from_xml | json_query('response.result.log.entry[*].{rule: rule, category: category, src_ip: source, dst_ip: destination}') }}"
+      when: palo_alto_logs.content is defined
+
+    - name: Save logs to CSV file
+      ansible.builtin.copy:
+        content: "rule,category,source_ip,destination_ip\n{% for rule in blocking_rules %}{{ rule.rule }},{{ rule.category }},{{ rule.src_ip }},{{ rule.dst_ip }}\n{% endfor %}"
+        dest: "{{ output_dir }}/palo_alto_logs_{{ ticket_number }}.csv"
+      when: blocking_rules is defined and blocking_rules | length > 0
+
+    - name: Display blocking rules
+      ansible.builtin.debug:
+        var: blocking_rules
+      when: blocking_rules is defined and blocking_rules | length > 0
+
+    - name: Set facts for firewall exception
+      ansible.builtin.set_fact:
+        rule_name: "SNOW-{{ ticket_number }}-{{ requested_url | regex_replace('[^a-zA-Z0-9]', '-') | truncate(20, True, '') }}"
+        destination_ip: "{{ blocking_rules[0].dst_ip | default('unknown') }}"
+        url_category: "{{ blocking_rules[0].category | default('any') }}"
+      when: blocking_rules is defined and blocking_rules | length > 0
+
+    - name: Create firewall exception rule
+      ansible.builtin.uri:
+        url: "https://{{ palo_alto_ip }}/api/?type=config&action=set&xpath=/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='vsys1']/rulebase/security/rules/entry[@name='{{ rule_name }}']&key={{ api_key }}"
+        method: GET
+        validate_certs: false
+        return_content: true
+        body: |
+          <entry name="{{ rule_name }}">
+            <from>trust</from>
+            <to>untrust</to>
+            <source>
+              <member>{{ source_ip }}</member>
+            </source>
+            <destination>
+              <member>{{ destination_ip }}</member>
+            </destination>
+            <service>
+              <member>application-default</member>
+            </service>
+            <application>
+              <member>web-browsing</member>
+            </application>
+            <category>
+              <member>{{ url_category }}</member>
+            </category>
+            <action>allow</action>
+            <description>Auto-generated from ServiceNow ticket {{ ticket_number }}</description>
+          </entry>
+      register: firewall_rule_creation
+      when: blocking_rules is defined and blocking_rules | length > 0
+
+    - name: Display firewall rule creation result
+      ansible.builtin.debug:
+        msg: "Firewall exception rule created: {{ rule_name }}"
+      when: firewall_rule_creation is defined
+
+    - name: Update ServiceNow ticket with firewall exception details
+      ansible.builtin.uri:
+        url: "https://{{ snow_instance }}/api/now/table/incident/{{ ticket_number }}"
+        method: PATCH
+        user: "{{ snow_username }}"
+        password: "{{ snow_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          work_notes: "Firewall exception rule created: {{ rule_name }} for URL: {{ requested_url }}. CSV logs saved at {{ output_dir }}/palo_alto_logs_{{ ticket_number }}.csv"
+          state: "4"  # Resolved
+        status_code: 200
+        headers:
+          Content-Type: application/json
+          Accept: application/json
+      when: firewall_rule_creation is defined
+
+    - name: Handle case when no blocking rules found
+      ansible.builtin.debug:
+        msg: "No blocking rules found for URL: {{ requested_url }}"
+      when: blocking_rules is not defined or blocking_rules | length == 0
+
+    - name: Update ServiceNow ticket when no blocking rules found
+      ansible.builtin.uri:
+        url: "https://{{ snow_instance }}/api/now/table/incident/{{ ticket_number }}"
+        method: PATCH
+        user: "{{ snow_username }}"
+        password: "{{ snow_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          work_notes: "No blocking rules found for URL: {{ requested_url }}. No firewall exception required."
+          state: "4"  # Resolved
+        status_code: 200
+        headers:
+          Content-Type: application/json
+          Accept: application/json
+      when: blocking_rules is not defined or blocking_rules | length == 0
